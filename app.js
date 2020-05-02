@@ -1,6 +1,7 @@
 const express = require("express");
 const https = require('https');
 const fs = require('fs')
+const tolerance = 1E-3;
 
 const app = express();
 const API_KEY_FILE_NAME = "api_key"
@@ -51,11 +52,21 @@ function updateRate(crypto_currency_code, on_rate_update){
   request.end();
 }
 
+function getActualPortfolioValue() {
+    return getBtcValue() + getEthValue();
+}
+function getBtcValue() {
+    return btc_amount * btc_rate;
+}
+function getEthValue() {
+    return eth_amount * eth_rate;
+}
+
 function getPortfolioValues()
 {
   return {
     "total_portfolio_value" : total_portfolio_value,
-    "actual_portfolio_value" : btc_amount * btc_rate + eth_amount * eth_rate,
+    "actual_portfolio_value" : getActualPortfolioValue(),
     "btc_ratio" : btc_ratio,
     "eth_ratio" : eth_ratio,
     "btc_amount" : btc_amount,
@@ -76,7 +87,7 @@ function validateValues(body){
   eth_ratio = body.eth_ratio;
 }
 
-function balancePortfolio(){
+function initializePortfolio(){
   return new Promise((resolve, reject) => {
     updateRate("BTC", (btc_json) => {
       btc_rate = btc_json.rate;
@@ -91,6 +102,42 @@ function balancePortfolio(){
   })
 }
 
+function validateRatios(){
+  var currentBtcRatio = getBtcValue() / getActualPortfolioValue();
+  var currentEthRatio = getEthValue() / getActualPortfolioValue();
+
+  if (Math.abs(currentBtcRatio - btc_ratio) > tolerance ||
+      Math.abs(currentEthRatio - eth_ratio) > tolerance){
+    throw new Error(`Expected ratios to be - BTC : ${btc_ratio} ETH : ${eth_ratio}, 
+      instead got - BTC : ${currentBtcRatio} ETH : ${currentEthRatio}`)
+  }
+}
+
+function balancePortfolio(){
+  return new Promise((resolve, reject) => {
+    updateRate("BTC", (btc_json) => {
+      btc_rate = btc_json.rate;
+
+      updateRate("ETH", (eth_json) => {
+        eth_rate = eth_json.rate;
+
+        let btc_to_buy = getActualPortfolioValue() * btc_ratio / btc_rate - btc_amount; // - new_btc_ratio * btc_rate; //btc_amount * (btc_ratio - new_btc_ratio);
+        let eth_to_buy = -btc_to_buy * (btc_rate / eth_rate);
+
+        btc_amount += btc_to_buy;
+        eth_amount += eth_to_buy;
+
+        validateRatios();
+
+        let result = getPortfolioValues();
+        result['action'] = `converted ${btc_to_buy} BTC to ${eth_to_buy} ETH`;
+
+        resolve(result);
+      });
+    });
+  })
+}
+
 app.use(express.json());
 
 app.get("/status", (req, res) => {
@@ -98,11 +145,22 @@ app.get("/status", (req, res) => {
 })
 
 app.post("/balance", (req, res) => {
+          balancePortfolio().then(
+              function whenOk(response) {
+                res.json(response)
+              }).catch(function notOk(e) {
+            console.error(e);
+            res.statusCode = 400;
+            res.end(e.message);
+          })
+});
+
+app.post("/init", (req, res) => {
     validateValues(req.body);
     readApiKeyFromFile().then(
         function(data) {
           api_key = data;
-          balancePortfolio().then(
+          initializePortfolio().then(
               function whenOk(response) {
                 res.json(response)
               }).catch(function notOk(e) {
