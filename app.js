@@ -1,10 +1,21 @@
 const express = require("express");
 const app = express();
 
+let total_portfolio_value, btc_ratio, eth_ratio;
+
+function getPortfolioValues()
+{
+  return {
+    "total_portfolio_value" : total_portfolio_value,
+    "btc_ratio" : btc_ratio,
+    "eth_ratio" : eth_ratio,
+  };
+}
+
 function validateInitValues(body){
-  let total_portfolio_value = body.total_portfolio_value;
-  let btc_ratio = body.btc_ratio;
-  let eth_ratio = body.eth_ratio;
+  total_portfolio_value = body.total_portfolio_value;
+  btc_ratio = body.btc_ratio;
+  eth_ratio = body.eth_ratio;
 
   if (total_portfolio_value <= 0) {
     throw new Error("portfolio value must be greater than 0");
@@ -13,14 +24,14 @@ function validateInitValues(body){
     throw new Error("BTC/ETH ratios must be greater than 0 and amount to 1.0");
   }
 
-  return {
-    "total_portfolio_value" : total_portfolio_value,
-    "btc_ratio" : btc_ratio,
-    "eth_ratio" : eth_ratio,
-  }
+  return getPortfolioValues();
 }
 
 app.use(express.json());
+
+app.get("/status", (req, res) => {
+  res.json(getPortfolioValues());
+})
 
 app.post("/init", (req, res) => {
   try{
