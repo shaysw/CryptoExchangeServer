@@ -9,26 +9,31 @@ let api_key, total_portfolio_value, btc_ratio, eth_ratio, btc_rate, eth_rate, bt
 
 function readApiKeyFromFile(){
     return new Promise((resolve, reject) => {
-      fs.readFile(API_KEY_FILE_NAME, (err, data) => {
-        if (err) {
-          reject (err)  // calling `reject` will cause the promise to fail with or without the error passed as an argument
-          return        // and we don't want to go any further
-        }
-        resolve(data.toString());
-      })
+      if (api_key === undefined){
+        fs.readFile(API_KEY_FILE_NAME, (err, data) => {
+          if (err) {
+            reject (err)  // calling `reject` will cause the promise to fail with or without the error passed as an argument
+            return        // and we don't want to go any further
+          }
+          resolve(data.toString());
+        })
+      }
+      else{
+        resolve(api_key);
+      }
     })
 }
 
 function updateRate(crypto_currency_code, on_rate_update){
-  var options = {
+  let options = {
     "method": "GET",
     "hostname": "rest.coinapi.io",
     "path": `/v1/exchangerate/${crypto_currency_code}/USD`,
     "headers": {'X-CoinAPI-Key': api_key}
   };
 
-  var request = https.request(options, function (response) {
-    var chunks = [];
+  let request = https.request(options, function (response) {
+    let chunks = [];
 
     response.on("data", function (chunk) {
       chunks.push(chunk);
@@ -37,38 +42,20 @@ function updateRate(crypto_currency_code, on_rate_update){
     response.on("end", function (chunk) {
       on_rate_update(JSON.parse(chunks));
     });
-  });
 
-  request.end();
-}
-
-function getResponse(){
-  const options = {
-    hostname: 'encrypted.google.com',
-    port: 443,
-    path: '/',
-    method: 'GET'
-  };
-
-  const req = https.request(options, (res) => {
-    console.log('statusCode:', res.statusCode);
-    console.log('headers:', res.headers);
-
-    res.on('data', (d) => {
-      process.stdout.write(d);
+    response.on("error", function (e) {
+      throw new Error(e.message);
     });
   });
 
-  req.on('error', (e) => {
-    console.error(e);
-  });
-  req.end();
+  request.end();
 }
 
 function getPortfolioValues()
 {
   return {
     "total_portfolio_value" : total_portfolio_value,
+    "actual_portfolio_value" : btc_amount * btc_rate + eth_amount * eth_rate,
     "btc_ratio" : btc_ratio,
     "eth_ratio" : eth_ratio,
     "btc_amount" : btc_amount,
@@ -76,17 +63,17 @@ function getPortfolioValues()
   };
 }
 
-function validateInitValues(body){
+function validateValues(body){
+  if (body.total_portfolio_value <= 0) {
+    throw new Error("portfolio value must be greater than 0");
+  }
+  if (body.btc_ratio <= 0 || body.eth_ratio <= 0 || body.btc_ratio + body.eth_ratio !== 1.0) {
+    throw new Error("BTC/ETH ratios must be greater than 0 and amount to 1.0");
+  }
+
   total_portfolio_value = body.total_portfolio_value;
   btc_ratio = body.btc_ratio;
   eth_ratio = body.eth_ratio;
-
-  if (total_portfolio_value <= 0) {
-    throw new Error("portfolio value must be greater than 0");
-  }
-  if (btc_ratio <= 0 || eth_ratio <= 0 || btc_ratio + eth_ratio !== 1.0) {
-    throw new Error("BTC/ETH ratios must be greater than 0 and amount to 1.0");
-  }
 }
 
 function balancePortfolio(){
@@ -110,31 +97,20 @@ app.get("/status", (req, res) => {
   res.json(getPortfolioValues());
 })
 
-app.post("/balance", (res, req) => {
-  balancePortfolio();
-  setTimeout(res.json(getPortfolioValues()), 0);
-})
-
-app.post("/init", (req, res) => {
-  try{
-    validateInitValues(req.body);
+app.post("/balance", (req, res) => {
+    validateValues(req.body);
     readApiKeyFromFile().then(
         function(data) {
           api_key = data;
           balancePortfolio().then(
               function whenOk(response) {
                 res.json(response)
-              }).catch(function notOk(err) {
-            console.log(err);
+              }).catch(function notOk(e) {
+            console.error(e);
+            res.statusCode = 400;
+            res.end(e.message);
           })
         })
-  }
-
-  catch (e) {
-    console.error(e);
-    res.statusCode = 400;
-    res.end(e.message);
-  }
 });
 
 app.listen(3000, () => {
