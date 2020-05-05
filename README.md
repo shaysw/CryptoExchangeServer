@@ -13,11 +13,11 @@ Initializes the service to maintain a specified (value) ration between ETH/BTC, 
 This initializes the service, fetching ETH + BTC rates from coinapi's API, triggers a 'Balance' call to the Kraken API, 
 fetching the user's balance (based on API keys), and displays a response in the form:
 {
-    "actual_portfolio_value": 22.353913812253516,
-    "desired_btc_ratio": 0.5,
-    "desired_eth_ratio": 0.5,
-    "btc_amount": 0.00176379,
-    "eth_amount": 0.03281789
+        "actual_portfolio_value": 22.353913812253516,
+        "desired_btc_ratio": 0.5,
+        "desired_eth_ratio": 0.5,
+        "btc_amount": 0.00176379,
+        "eth_amount": 0.03281789
 }
 Note that the above example represents a ratio of 50/50 in terms of value, and so the aim is to balance to portfolio in such a way that
 the ratio is BTC:0.7, ETH:0.3, as specified in the request's body
